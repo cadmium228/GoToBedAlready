@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 import zipfile
 
+from fetch_webview import fetch
+
 
 def build():
     parser = argparse.ArgumentParser()
@@ -20,6 +22,9 @@ def build():
     output.mkdir(parents=True, exist_ok=True)
     toolchain = subprocess.check_output(['go', 'version'], text=True).strip()
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+    if subprocess.check_output(['git', 'status', '--porcelain'], cwd=root, text=True).strip():
+        revision += '+local-changes'
+    fetch(root / 'runtime' / 'webview2')
     hashes = []
     for architecture in ('amd64', 'arm64'):
         with tempfile.TemporaryDirectory() as temporary:
@@ -28,12 +33,21 @@ def build():
             environment = dict(os.environ, GOOS='windows', GOARCH=architecture, CGO_ENABLED='0')
             subprocess.run([
                 'go', 'build', '-trimpath', '-buildvcs=false',
-                '-ldflags', f'-s -w -X main.version={args.version}',
+                '-ldflags', f'-s -w -H=windowsgui -X main.version={args.version}',
                 '-o', str(stage / 'GoToBedAlready.exe'), './cmd/gotobedalready'
             ], cwd=root, env=environment, check=True)
             shutil.copytree(root / 'web', stage / 'web')
             (stage / 'scripts').mkdir()
-            shutil.copy(root / 'scripts' / 'observe.ps1', stage / 'scripts')
+            for name in ('observe.ps1', 'native-progress.cs', 'desktop.ps1', 'DesktopHost.cs'):
+                shutil.copy(root / 'scripts' / name, stage / 'scripts')
+            runtime = stage / 'runtime' / 'webview2'
+            runtime.mkdir(parents=True)
+            for name in ('Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinForms.dll', 'pywebview-LICENSE.txt'):
+                shutil.copy(root / 'runtime' / 'webview2' / name, runtime)
+            for loader_architecture in ('amd64', 'arm64'):
+                shutil.copytree(root / 'runtime' / 'webview2' / loader_architecture, runtime / loader_architecture)
+            shutil.copy(root / 'docs' / 'WebView2-LICENSE.txt', runtime)
+            shutil.copy(root / 'docs' / 'THIRD_PARTY.md', runtime)
             shutil.copy(root / 'README.md', stage)
             (stage / 'BUILD.txt').write_text(f'GoToBedAlready {args.version}\n{toolchain}\nCommit: {revision}\nTarget: windows/{architecture}\n', encoding='utf-8')
             archive = output / f'GoToBedAlready-{args.version}-windows-{architecture}.zip'

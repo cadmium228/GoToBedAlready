@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cadmium228/GoToBedAlready/internal/domain"
+	"github.com/cadmium228/GoToBedAlready/internal/energy"
 )
 
 type memoryRepository struct {
@@ -212,5 +213,40 @@ func TestInvalidRepositoryFallsBackSafely(t *testing.T) {
 	status := service.Status()
 	if status.Active || !status.Preferences.DryRun || status.Preferences.DelayMinutes != 5 || status.StorageWarning == "" {
 		t.Fatalf("unsafe defaults: %+v", status)
+	}
+}
+
+func TestPowerSettingsPersistWithoutStartingAndSurviveStart(t *testing.T) {
+	service, observer, _, repository := fixture(t)
+	options := energy.Options{BlankDisplay: true, PreventSleep: true}
+	if err := service.SetEnergy(options); err != nil {
+		t.Fatal(err)
+	}
+	if _, active := service.EnergyState(); active {
+		t.Fatal("settings started monitoring")
+	}
+	if err := service.Start(context.Background(), observer.process, domain.Preferences{DelayMinutes: 1, DryRun: true}); err != nil {
+		t.Fatal(err)
+	}
+	actual, active := service.EnergyState()
+	if actual != options || !active || !repository.document.Preferences.BlankDisplay {
+		t.Fatal("settings lost")
+	}
+	service.Cancel()
+	actual, active = service.EnergyState()
+	if actual != options || active {
+		t.Fatal("cancellation lost energy options")
+	}
+}
+
+func TestFailedPowerSettingsSaveDoesNotChangePolicy(t *testing.T) {
+	service, _, _, repository := fixture(t)
+	before, _ := service.EnergyState()
+	repository.saveError = errors.New("disk full")
+	if service.SetEnergy(energy.Options{BlankDisplay: true}) == nil {
+		t.Fatal("storage error ignored")
+	}
+	if after, _ := service.EnergyState(); after != before {
+		t.Fatal("applied unsaved options")
 	}
 }

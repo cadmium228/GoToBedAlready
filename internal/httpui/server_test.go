@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cadmium228/GoToBedAlready/internal/domain"
+	"github.com/cadmium228/GoToBedAlready/internal/energy"
 )
 
 type fakeMonitor struct {
@@ -90,5 +91,56 @@ func TestStateChangesRequirePostAndJSON(t *testing.T) {
 		if response.Code != test.code {
 			t.Fatalf("%s: got %d want %d", test.path, response.Code, test.code)
 		}
+	}
+}
+
+type fakePowerSettings struct {
+	options energy.Options
+	calls   int
+}
+
+func (p *fakePowerSettings) SetEnergy(options energy.Options) error {
+	p.options = options
+	p.calls++
+	return nil
+}
+
+func TestPowerEndpointRequiresSessionAndStrictJSON(t *testing.T) {
+	settings := &fakePowerSettings{}
+	handler := New(&fakeMonitor{}, Options{Host: "127.0.0.1:9000", Token: "secret", PowerSettings: settings})
+	request := httptest.NewRequest("POST", "http://127.0.0.1:9000/api/power", strings.NewReader(`{"blankDisplay":true,"preventSleep":true}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != 401 || settings.calls != 0 {
+		t.Fatal("unauthorized power change")
+	}
+	for _, body := range []string{`{"blankDisplay":true,"preventSleep":true}`, `{"unknown":true}`, `{} {}`} {
+		request = httptest.NewRequest("POST", "http://127.0.0.1:9000/api/power", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("X-Session-Token", "secret")
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if strings.Contains(body, "blankDisplay") && response.Code != 200 {
+			t.Fatal(response.Body.String())
+		}
+		if !strings.Contains(body, "blankDisplay") && response.Code != 400 {
+			t.Fatal("accepted malformed power settings")
+		}
+	}
+	if settings.calls != 1 || !settings.options.BlankDisplay || !settings.options.PreventSleep {
+		t.Fatal(settings)
+	}
+}
+
+func TestRealUIHasNoPersistedDryRunMode(t *testing.T) {
+	monitor := &fakeMonitor{}
+	request := httptest.NewRequest("POST", "http://127.0.0.1:9000/api/start", strings.NewReader(`{"process":{"pid":1},"preferences":{"delayMinutes":5,"dryRun":true}}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Session-Token", "secret")
+	response := httptest.NewRecorder()
+	New(monitor, Options{Host: "127.0.0.1:9000", Token: "secret"}).ServeHTTP(response, request)
+	if response.Code != 200 || monitor.preferences.DryRun {
+		t.Fatal("hidden dry-run mode still controls real UI")
 	}
 }

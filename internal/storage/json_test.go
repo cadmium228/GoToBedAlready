@@ -39,3 +39,14 @@ func TestCorruptSettingsReturnError(t *testing.T) {
 		t.Fatal("corrupt JSON accepted")
 	}
 }
+
+func TestLegacySettingsReceivePowerDefaults(t *testing.T) {
+	store := JSON{Path: filepath.Join(t.TempDir(), "settings.json")}
+	if err := os.WriteFile(store.Path, []byte(`{"preferences":{"delayMinutes":5,"dryRun":true}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	document, err := store.Load()
+	if err != nil || !document.Preferences.PreventSleep || document.Preferences.BlankDisplay {
+		t.Fatalf("%+v %v", document, err)
+	}
+}

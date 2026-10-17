@@ -71,6 +71,7 @@ func (w WindowsObserver) Read(ctx context.Context, process domain.Process) (doma
 	if err := json.Unmarshal(output, &sample); err != nil {
 		return domain.Sample{}, fmt.Errorf("decode progress: %w", err)
 	}
+	sample.Detail = progressDetail(sample.Detail)
 	return sample, nil
 }
 
@@ -89,16 +90,28 @@ func (WindowsPower) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func OpenBrowser(url string) error {
-	program, err := systemExecutable("rundll32.exe")
+func (w WindowsObserver) Inspect(ctx context.Context, process domain.Process) (json.RawMessage, error) {
+	output, err := w.execute(ctx, "-Mode", "inspect", "-TargetId", strconv.Itoa(process.PID), "-StartedAt", process.StartedAt)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	command := exec.Command(program, "url.dll,FileProtocolHandler", url)
-	configureCommand(command)
-	if err := command.Start(); err != nil {
-		return err
+	if !json.Valid(output) {
+		return nil, errors.New("Некорректная диагностика Windows")
 	}
-	go command.Wait()
-	return nil
+	return json.RawMessage(output), nil
+}
+
+func progressDetail(code string) string {
+	switch code {
+	case "MULTIPLE_PROGRESS":
+		return "В окнах процесса несколько индикаторов. Оставьте одну загрузку"
+	case "PROCESS_TREE_UNAVAILABLE":
+		return "Недоступно дерево процессов. Выберите процесс с окном или сохраните диагностику"
+	case "NO_RELATED_WINDOW":
+		return "У процесса и его дочерних процессов нет открытых окон"
+	case "NO_ACCESSIBLE_PROGRESS":
+		return "Лаунчер не предоставляет доступный процент. Откройте экран загрузки; если ошибка остаётся, сохраните диагностику"
+	default:
+		return code
+	}
 }

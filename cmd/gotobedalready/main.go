@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/cadmium228/GoToBedAlready/internal/config"
+	"github.com/cadmium228/GoToBedAlready/internal/desktop"
+	"github.com/cadmium228/GoToBedAlready/internal/energy"
 	"github.com/cadmium228/GoToBedAlready/internal/httpui"
 	"github.com/cadmium228/GoToBedAlready/internal/monitor"
 	"github.com/cadmium228/GoToBedAlready/internal/platform"
@@ -27,6 +29,7 @@ var version = "dev"
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		desktop.ReportError(err.Error())
 		os.Exit(1)
 	}
 }
@@ -66,7 +69,12 @@ func run() error {
 	token := hex.EncodeToString(secret)
 	address := listener.Addr().String()
 	url := "http://" + address + "/#" + token
-	handler := httpui.New(service, httpui.Options{Assets: settings.Assets, Token: token, Host: address, Demo: settings.Demo, Version: version})
+	var device energy.Device
+	if !settings.Demo {
+		device = energy.NewDevice()
+	}
+	energyManager := energy.New(device, service)
+	handler := httpui.New(service, httpui.Options{Assets: settings.Assets, Token: token, Host: address, Demo: settings.Demo, Version: version, Energy: energyManager, PowerSettings: service})
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -77,22 +85,27 @@ func run() error {
 	}()
 	serverErrors := make(chan error, 1)
 	go func() { serverErrors <- server.Serve(listener) }()
-	fmt.Printf("GoToBedAlready %s\n%s\nCtrl+C: cancel monitoring and exit. Keep this console open.\n", version, url)
+	fmt.Printf("GoToBedAlready %s\n%s\nCtrl+C: exit. Closing the desktop window cancels monitoring.\n", version, url)
 	if settings.Demo {
 		fmt.Println("DEMO: shutdown is disabled; progress is simulated.")
 	}
+
+	energyDone := make(chan struct{})
+	go func() { defer close(energyDone); energyManager.Run(ctx) }()
+	windowErrors := make(chan error, 1)
 	if settings.OpenBrowser && runtime.GOOS == "windows" {
-		if err := platform.OpenBrowser(url); err != nil {
-			fmt.Fprintf(os.Stderr, "Open the URL manually: %v\n", err)
-		}
+		go func() { windowErrors <- desktop.Run(ctx, settings.Assets, url) }()
 	}
+
 	select {
 	case <-ctx.Done():
 	case err = <-serverErrors:
+	case err = <-windowErrors:
 	}
 	stop()
 	service.Cancel()
 	<-monitorDone
+	<-energyDone
 	shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	shutdownErr := server.Shutdown(shutdownContext)
