@@ -6,11 +6,16 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      version:
+        description: Version to build, for example v0.2.0
+        default: v0.2.0
+        required: true
+        type: string
       publish:
-        description: Publish the existing v0.1.0 draft after verification
-        type: boolean
+        description: Publish the verified Windows builds as a prerelease
         default: false
         required: true
+        type: boolean
 
 permissions:
   contents: read
@@ -27,6 +32,9 @@ jobs:
         with:
           go-version: "1.26.9"
           cache: false
+      - name: Prepare WebView2 SDK
+        if: runner.os == 'Windows'
+        run: python scripts/fetch_webview.py
       - name: Test with diagnostics
         shell: bash
         run: |
@@ -56,7 +64,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
-      - run: python scripts/build.py --version v0.1.0
+      - name: Build Windows archives
+        env:
+          VERSION: ${{ inputs.version || 'v0.2.0-preview' }}
+        run: python scripts/build.py --version "$VERSION"
       - uses: actions/upload-artifact@v7
         with:
           name: GoToBedAlready-windows
@@ -67,23 +78,37 @@ jobs:
 
   release:
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.publish) ||
-      (github.event_name == 'push' &&
-       github.ref == 'refs/heads/arena/676301c3-gotobedalready' &&
-       startsWith(github.event.head_commit.message, 'Release GoToBedAlready v0.1.0'))
+      github.event_name == 'workflow_dispatch' &&
+      inputs.publish &&
+      github.ref == 'refs/heads/main'
     needs: package
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           name: GoToBedAlready-windows
           path: dist
-      - name: Upload verified packages and publish the draft
+      - name: Publish the prerelease without overwriting existing releases
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
         run: |
-          gh release upload v0.1.0 dist/*.zip dist/SHA256SUMS.txt --clobber
-          gh release edit v0.1.0 --draft=false --prerelease --target "$GITHUB_SHA"
+          set -euo pipefail
+          case "$VERSION" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "Invalid release version: $VERSION" >&2; exit 1 ;;
+          esac
+          if gh release view "$VERSION" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          gh release create "$VERSION" dist/*.zip dist/SHA256SUMS.txt \
+            --repo "$GH_REPO" \
+            --target "$GITHUB_SHA" \
+            --title "GoToBedAlready $VERSION — Windows Preview" \
+            --prerelease \
+            --notes-file docs/release-notes.md
