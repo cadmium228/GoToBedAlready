@@ -66,7 +66,11 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.publish) ||
+      (github.event_name == 'push' &&
+       github.ref == 'refs/heads/arena/676301c3-gotobedalready' &&
+       github.event.head_commit.message == 'Release GoToBedAlready v0.1.0')
     needs: package
     runs-on: ubuntu-latest
     permissions:
