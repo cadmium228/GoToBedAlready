@@ -17,7 +17,7 @@ import (
 
 var configureCommand = func(command *exec.Cmd) {}
 
-type Windows struct {
+type WindowsObserver struct {
 	Script string
 }
 
@@ -32,7 +32,7 @@ func systemExecutable(name string) (string, error) {
 	return filepath.Join(root, "System32", name), nil
 }
 
-func (w Windows) execute(ctx context.Context, arguments ...string) ([]byte, error) {
+func (w WindowsObserver) execute(ctx context.Context, arguments ...string) ([]byte, error) {
 	program, err := systemExecutable("WindowsPowerShell/v1.0/powershell.exe")
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (w Windows) execute(ctx context.Context, arguments ...string) ([]byte, erro
 	return []byte(strings.TrimPrefix(string(output), "\ufeff")), nil
 }
 
-func (w Windows) Processes(ctx context.Context) ([]domain.Process, error) {
+func (w WindowsObserver) Processes(ctx context.Context) ([]domain.Process, error) {
 	output, err := w.execute(ctx, "-Mode", "list")
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func (w Windows) Processes(ctx context.Context) ([]domain.Process, error) {
 	return processes, nil
 }
 
-func (w Windows) Read(ctx context.Context, process domain.Process) (domain.Sample, error) {
+func (w WindowsObserver) Read(ctx context.Context, process domain.Process) (domain.Sample, error) {
 	output, err := w.execute(ctx, "-Mode", "read", "-TargetId", strconv.Itoa(process.PID), "-StartedAt", process.StartedAt)
 	if err != nil {
 		return domain.Sample{}, err
@@ -74,7 +74,9 @@ func (w Windows) Read(ctx context.Context, process domain.Process) (domain.Sampl
 	return sample, nil
 }
 
-func (w Windows) Shutdown(ctx context.Context) error {
+type WindowsPower struct{}
+
+func (WindowsPower) Shutdown(ctx context.Context) error {
 	program, err := systemExecutable("shutdown.exe")
 	if err != nil {
 		return err

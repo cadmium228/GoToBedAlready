@@ -43,13 +43,13 @@ func TestWindowsProcessListing(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if _, err := (Windows{Script: path}).Processes(ctx); err != nil {
+	if _, err := (WindowsObserver{Script: path}).Processes(ctx); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestDemoPowerIsAlwaysBlocked(t *testing.T) {
-	if (&Demo{}).Shutdown(context.Background()) == nil {
+	if (DisabledPower{}).Shutdown(context.Background()) == nil {
 		t.Fatal("demo shutdown allowed")
 	}
 }
@@ -101,7 +101,7 @@ $window.ShowDialog() | Out-Null
 	if err != nil {
 		t.Fatal(err)
 	}
-	observer := Windows{Script: observerPath}
+	observer := WindowsObserver{Script: observerPath}
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 	var target domain.Process

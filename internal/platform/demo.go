@@ -32,6 +32,8 @@ func (d *Demo) Read(ctx context.Context, process domain.Process) (domain.Sample,
 	return domain.Sample{Available: true, Percent: percent, Source: "demo-progress"}, ctx.Err()
 }
 
-func (d *Demo) Shutdown(context.Context) error {
+type DisabledPower struct{}
+
+func (DisabledPower) Shutdown(context.Context) error {
 	return errors.New("демонстрационный режим никогда не выключает ПК")
 }

@@ -42,12 +42,12 @@ func run() error {
 	if runtime.GOOS != "windows" && !settings.Demo {
 		return errors.New("Windows 10/11 required; use -demo for a safe preview")
 	}
-	windows := platform.Windows{Script: filepath.Join(settings.Assets, "scripts", "observe.ps1")}
+	windows := platform.WindowsObserver{Script: filepath.Join(settings.Assets, "scripts", "observe.ps1")}
 	var observer monitor.Observer = windows
-	var power monitor.PowerController = windows
+	var power monitor.PowerController = platform.WindowsPower{}
 	if settings.Demo {
 		demo := &platform.Demo{}
-		observer, power = demo, demo
+		observer, power = demo, platform.DisabledPower{}
 		settings.Data += ".demo"
 	}
 	service, err := monitor.New(observer, power, storage.JSON{Path: settings.Data}, 3*time.Second)

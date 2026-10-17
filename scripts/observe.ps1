@@ -111,5 +111,5 @@ try {
         Send-Unavailable 'No unambiguous UI Automation progress. Keep the download window open; this launcher may be unsupported'
     }
 } catch {
-    Send-Unavailable 'Window closed, access denied, or UI Automation provider unavailable'
+    Send-Unavailable ('UI Automation unavailable: ' + $_.Exception.Message)
 }
