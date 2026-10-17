@@ -55,7 +55,6 @@ try {
     function Read-Progress($element, [string]$prefix, [bool]$allowName) {
         $pattern = $null
         $value = $null
-        if (-not $element.Current.IsEnabled) { return }
         if ($element.TryGetCurrentPattern($rangeType::Pattern, [ref]$pattern)) {
             $range = $pattern.Current
             if ($range.Maximum -gt $range.Minimum -and $range.Value -ge $range.Minimum -and $range.Value -le $range.Maximum) {

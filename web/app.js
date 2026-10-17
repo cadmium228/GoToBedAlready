@@ -17,6 +17,7 @@ let demo = false;
 let initialized = false;
 let busy = false;
 let connected = false;
+let networkFailure = false;
 let eventsSignature = "";
 let sessionToken = "";
 
@@ -185,6 +186,8 @@ function updateCountdown() {
 async function poll() {
   try {
     const result = await api("status");
+    if (networkFailure) clearError();
+    networkFailure = false;
     connected = true;
     demo = result.demo;
     $("demo-banner").hidden = !demo;
@@ -201,6 +204,7 @@ async function poll() {
     render(result.status);
   } catch (error) {
     connected = false;
+    networkFailure = true;
     document.querySelector(".local-badge .dot").classList.add("offline");
     $("environment").textContent = "Нет связи с приложением";
     $("status-message").textContent =

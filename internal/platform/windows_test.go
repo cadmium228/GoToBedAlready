@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 
@@ -66,6 +67,7 @@ func TestWindowsProgressObservation(t *testing.T) {
 	valuePath := filepath.Join(directory, "value.txt")
 	fixturePath := filepath.Join(directory, "fixture.ps1")
 	fixtureScript := `Add-Type -AssemblyName System.Windows.Forms
+[Windows.Forms.Application]::EnableVisualStyles()
 $window = New-Object Windows.Forms.Form
 $window.Text = 'GoToBedAlready UI Automation Test'
 $bar = New-Object Windows.Forms.ProgressBar
@@ -116,14 +118,17 @@ $window.ShowDialog() | Out-Null
 			t.Fatal(err)
 		}
 		for _, process := range processes {
-			if process.PID == command.Process.Pid {
+			if process.PID == command.Process.Pid && process.Title == "GoToBedAlready UI Automation Test" {
 				target = process
 			}
 		}
 	}
 	first, err := observer.Read(ctx, target)
 	if err != nil || !first.Valid() || first.Percent != 25 {
-		t.Fatalf("expected 25%% progress: %+v, %v", first, err)
+		diagnostic := exec.CommandContext(ctx, program, "-NoProfile", "-NonInteractive", "-Command", "$p=Get-Process -Id $env:GTB_TARGET; Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; $root=[Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle); $root.FindAll([Windows.Automation.TreeScope]::Subtree,[Windows.Automation.Condition]::TrueCondition) | ForEach-Object { @{name=$_.Current.Name; class=$_.Current.ClassName; type=$_.Current.ControlType.ProgrammaticName; enabled=$_.Current.IsEnabled; patterns=@($_.GetSupportedPatterns() | ForEach-Object {$_.ProgrammaticName})} } | ConvertTo-Json -Depth 5 -Compress")
+		diagnostic.Env = append(diagnostic.Environ(), "GTB_TARGET="+strconv.Itoa(target.PID))
+		output, _ := diagnostic.CombinedOutput()
+		t.Fatalf("expected 25%% progress: %+v, %v; target=%+v; tree=%s", first, err, target, output)
 	}
 	if err := os.WriteFile(valuePath, []byte("100"), 0600); err != nil {
 		t.Fatal(err)
