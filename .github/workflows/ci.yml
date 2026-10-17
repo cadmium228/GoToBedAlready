@@ -5,6 +5,12 @@ on:
     branches: [main, "arena/**"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the existing v0.1.0 draft after verification
+        type: boolean
+        default: false
+        required: true
 
 permissions:
   contents: read
@@ -58,3 +64,22 @@ jobs:
             dist/*.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: GoToBedAlready-windows
+          path: dist
+      - name: Upload verified packages and publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release upload v0.1.0 dist/*.zip dist/SHA256SUMS.txt --clobber
+          gh release edit v0.1.0 --draft=false --prerelease --target "$GITHUB_SHA"
