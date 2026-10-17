@@ -22,7 +22,7 @@ func (s JSON) Load() (domain.Document, error) {
 	if err != nil {
 		return domain.Document{}, err
 	}
-	var document domain.Document
+	document := domain.Document{Preferences: domain.DefaultPreferences()}
 	if err := json.Unmarshal(data, &document); err != nil {
 		return domain.Document{}, fmt.Errorf("decode settings: %w", err)
 	}

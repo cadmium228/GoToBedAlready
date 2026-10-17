@@ -27,10 +27,12 @@ func (s Sample) Valid() bool {
 type Preferences struct {
 	DelayMinutes int  `json:"delayMinutes"`
 	DryRun       bool `json:"dryRun"`
+	BlankDisplay bool `json:"blankDisplay"`
+	PreventSleep bool `json:"preventSleep"`
 }
 
 func DefaultPreferences() Preferences {
-	return Preferences{DelayMinutes: 5, DryRun: true}
+	return Preferences{DelayMinutes: 5, DryRun: true, PreventSleep: true}
 }
 
 func (p Preferences) Validate() error {

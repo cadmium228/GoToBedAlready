@@ -2,12 +2,14 @@ package monitor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/cadmium228/GoToBedAlready/internal/domain"
+	"github.com/cadmium228/GoToBedAlready/internal/energy"
 )
 
 type Observer interface {
@@ -90,6 +92,8 @@ func (s *Service) Start(ctx context.Context, process domain.Process, preferences
 		return err
 	}
 	s.generation++
+	preferences.BlankDisplay = s.document.Preferences.BlankDisplay
+	preferences.PreventSleep = s.document.Preferences.PreventSleep
 	s.document.Preferences = preferences
 	s.current = newSession(process, preferences, time.Now())
 	s.recordLocked("Наблюдение: " + process.Name)
@@ -202,4 +206,36 @@ func (s *Service) recordLocked(message string) {
 	} else {
 		s.current.status.StorageWarning = ""
 	}
+}
+
+func (s *Service) EnergyState() (energy.Options, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	preferences := s.document.Preferences
+	return energy.Options{BlankDisplay: preferences.BlankDisplay, PreventSleep: preferences.PreventSleep}, s.current.status.Active
+}
+
+func (s *Service) SetEnergy(options energy.Options) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := s.document
+	next.Preferences.BlankDisplay = options.BlankDisplay
+	next.Preferences.PreventSleep = options.PreventSleep
+	if err := s.repository.Save(next); err != nil {
+		return err
+	}
+	s.document = next
+	s.current.status.Preferences.BlankDisplay = options.BlankDisplay
+	s.current.status.Preferences.PreventSleep = options.PreventSleep
+	return nil
+}
+
+func (s *Service) Inspect(ctx context.Context, process domain.Process) (json.RawMessage, error) {
+	inspector, ok := s.observer.(interface {
+		Inspect(context.Context, domain.Process) (json.RawMessage, error)
+	})
+	if !ok {
+		return nil, errors.New("Диагностика доступна только на Windows")
+	}
+	return inspector.Inspect(ctx, process)
 }

@@ -21,16 +21,20 @@ func TestPowerShellSyntax(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := filepath.Abs("../../scripts/observe.ps1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, program, "-NoProfile", "-NonInteractive", "-Command", "$tokens=$null; $errors=$null; [System.Management.Automation.Language.Parser]::ParseFile($env:GTB_SCRIPT,[ref]$tokens,[ref]$errors) | Out-Null; if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }")
-	command.Env = append(command.Environ(), "GTB_SCRIPT="+path)
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("PowerShell syntax: %v\n%s", err, output)
+	for _, name := range []string{"observe.ps1", "desktop.ps1"} {
+		t.Run(name, func(t *testing.T) {
+			path, err := filepath.Abs(filepath.Join("../../scripts", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			command := exec.CommandContext(ctx, program, "-NoProfile", "-NonInteractive", "-Command", "$tokens=$null; $errors=$null; [System.Management.Automation.Language.Parser]::ParseFile($env:GTB_SCRIPT,[ref]$tokens,[ref]$errors) | Out-Null; if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }")
+			command.Env = append(command.Environ(), "GTB_SCRIPT="+path)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("PowerShell syntax: %v\n%s", err, output)
+			}
+		})
 	}
 }
 
@@ -156,4 +160,26 @@ $window.ShowDialog() | Out-Null
 	if err != nil || stale.Available {
 		t.Fatalf("reused PID must be unavailable: %+v, %v", stale, err)
 	}
+}
+
+func TestProcessWithoutWindowIsListed(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows required")
+	}
+	path, err := filepath.Abs("../../scripts/observe.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	processes, err := (WindowsObserver{Script: path}).Processes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, process := range processes {
+		if process.PID == os.Getpid() {
+			return
+		}
+	}
+	t.Fatal("current windowless process missing")
 }
