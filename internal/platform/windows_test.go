@@ -66,18 +66,22 @@ func TestWindowsProgressObservation(t *testing.T) {
 	directory := t.TempDir()
 	valuePath := filepath.Join(directory, "value.txt")
 	fixturePath := filepath.Join(directory, "fixture.ps1")
-	fixtureScript := `Add-Type -AssemblyName System.Windows.Forms
-[Windows.Forms.Application]::EnableVisualStyles()
-$window = New-Object Windows.Forms.Form
-$window.Text = 'GoToBedAlready UI Automation Test'
-$bar = New-Object Windows.Forms.ProgressBar
-$bar.Width = 250
+	fixtureScript := `Add-Type -AssemblyName PresentationFramework
+$window = New-Object Windows.Window
+$window.Title = 'GoToBedAlready UI Automation Test'
+$window.Width = 320
+$window.Height = 120
+$bar = New-Object Windows.Controls.ProgressBar
+$bar.Height = 24
+$bar.Margin = New-Object Windows.Thickness(20)
+$bar.Minimum = 0
+$bar.Maximum = 100
 $bar.Value = 25
-$window.Controls.Add($bar)
-$timer = New-Object Windows.Forms.Timer
-$timer.Interval = 200
+$window.Content = $bar
+$timer = New-Object Windows.Threading.DispatcherTimer
+$timer.Interval = [TimeSpan]::FromMilliseconds(200)
 $timer.Add_Tick({
-    try { $bar.Value = [int](Get-Content -LiteralPath $env:GTB_TEST_VALUE -Raw) } catch {}
+    try { $bar.Value = [double](Get-Content -LiteralPath $env:GTB_TEST_VALUE -Raw) } catch {}
 })
 $timer.Start()
 $window.ShowDialog() | Out-Null
